@@ -12,6 +12,7 @@ fullscreen = 1
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE
 android.api = 34
 android.minapi = 26
+android.ndk = 25b
 android.ndk_path = 
 android.sdk_path = 
 android.archs = arm64-v8a

@@ -66,5 +66,6 @@ jobs:
 
       - name: Build APK
         run: |
+          unset GRADLE_HOME
           buildozer android debug
         timeout-minutes: 60
