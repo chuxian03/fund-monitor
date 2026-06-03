@@ -64,6 +64,16 @@ jobs:
           test -f buildozer.spec && echo "spec found" || (echo "spec missing" && exit 1)
           test -f android_main.py && echo "android_main.py found" || (echo "android_main.py missing" && exit 1)
 
+      - name: Pre-download freetype source
+        run: |
+          mkdir -p $HOME/.buildozer/android/packages
+          cd $HOME/.buildozer/android/packages
+          if [ ! -f freetype-2.14.1.tar.gz ]; then
+            wget -q --timeout=120 https://download.savannah.gnu.org/releases/freetype/freetype-2.14.1.tar.gz || \
+            wget -q --timeout=120 https://github.com/freetype/freetype/archive/refs/tags/VER-2-14-1.tar.gz -O freetype-2.14.1.tar.gz
+          fi
+          echo "freetype cached at $(pwd)/freetype-2.14.1.tar.gz"
+
       - name: Build APK
         run: |
           unset GRADLE_HOME
@@ -72,4 +82,4 @@ jobs:
           unset ANDROID_NDK_HOME
           unset ANDROID_NDK_ROOT
           buildozer android debug
-        timeout-minutes: 60
+        timeout-minutes: 120
