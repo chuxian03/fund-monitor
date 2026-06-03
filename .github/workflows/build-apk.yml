@@ -28,10 +28,14 @@ jobs:
             unzip zip wget curl \
             libltdl-dev libusb-1.0-0-dev
 
-      - name: Install Buildozer and Cython
+      - name: Install Cython
         run: |
           pip install --upgrade pip setuptools wheel
-          pip install buildozer cython virtualenv
+          pip install Cython==0.29.36
+
+      - name: Install Buildozer
+        run: |
+          pip install buildozer
 
       - name: Verify buildozer.spec
         run: |
