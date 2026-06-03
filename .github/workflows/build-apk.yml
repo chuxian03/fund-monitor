@@ -37,6 +37,11 @@ jobs:
         run: |
           pip install buildozer
 
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+
       - name: Verify buildozer.spec
         run: |
           test -f buildozer.spec && echo "spec found" || (echo "spec missing" && exit 1)
