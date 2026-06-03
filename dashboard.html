@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>基金实时监控看板</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;background:#0f1923;color:#e0e0e0;min-height:100vh}
+
+/* 顶部 */
+.header{background:linear-gradient(135deg,#1a2a3a,#0f1923);padding:10px 20px;border-bottom:1px solid #2a3a4a;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.header-left h1{font-size:18px;color:#ffd700}
+.header-left .meta{font-size:11px;color:#8899aa;margin-top:2px}
+.header-right{display:flex;align-items:center;gap:10px}
+
+.auto-toggle{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:12px;color:#8899aa}
+.auto-toggle .switch{position:relative;width:36px;height:20px;background:#2a3a4a;border-radius:20px;transition:.2s}
+.auto-toggle .switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;background:#8899aa;border-radius:50%;transition:.2s}
+.auto-toggle.on .switch{background:#ffd700}
+.auto-toggle.on .switch::after{left:18px;background:#0f1923}
+.auto-toggle.on{color:#ffd700}
+.auto-interval{color:#8899aa;font-size:11px}
+
+.refresh-btn{padding:7px 18px;border-radius:6px;background:#ffd700;color:#0f1923;border:none;font-size:13px;font-weight:700;cursor:pointer;transition:.2s;display:flex;align-items:center;gap:6px}
+.refresh-btn:hover{background:#ffed4a}
+.refresh-btn:disabled{opacity:.6;cursor:wait}
+.refresh-btn .spinner{display:none;width:14px;height:14px;border:2px solid #0f1923;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
+.refresh-btn.loading .spinner{display:inline-block}
+.refresh-btn.loading .btn-text{display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 指数卡片 */
+.index-cards{display:flex;gap:10px;padding:10px 20px;flex-wrap:wrap}
+.idx-card{flex:1;min-width:130px;background:#1a2a3a;border-radius:6px;padding:10px 14px;border:1px solid #2a3a4a}
+.idx-card .label{font-size:11px;color:#8899aa}
+.idx-card .value{font-size:20px;font-weight:700;margin:2px 0}
+.idx-card .sub{font-size:11px}
+.up{color:#ff4444}.down{color:#22bb44}.neutral{color:#ffa500}
+
+/* ==== 主导航 Tab ==== */
+.tab-nav{display:flex;gap:0;padding:0 20px;border-bottom:2px solid #2a3a4a}
+.tab-btn{padding:10px 24px;background:transparent;border:none;color:#8899aa;font-size:14px;font-weight:600;cursor:pointer;position:relative;transition:.15s;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab-btn:hover{color:#e0e0e0}
+.tab-btn.active{color:#ffd700;border-bottom-color:#ffd700}
+.tab-panel{display:none;padding:16px 20px}
+.tab-panel.active{display:block}
+
+/* ==== Tab1: 行业板块 ==== */
+.sector-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.sector-card{background:#1a2a3a;border-radius:8px;padding:14px;border:1px solid #2a3a4a;transition:.15s}
+.sector-card:hover{border-color:#ffd700}
+.sector-card .sc-header{cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.sector-card .sc-header .sc-arrow{font-size:12px;color:#8899aa;transition:transform .2s}
+.sector-card .sc-header.expanded .sc-arrow{transform:rotate(90deg)}
+.sector-card .sc-name{font-size:14px;font-weight:700;color:#e0e0e0;margin-bottom:6px}
+.sector-card .sc-stats{display:flex;gap:16px;font-size:12px;margin-bottom:8px}
+.sector-card .sc-tag{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.sector-card .sc-body{display:none;margin-top:10px;border-top:1px solid #2a3a4a;padding-top:8px;max-height:360px;overflow-y:auto}
+.sector-card .sc-body .sc-loading{padding:12px;text-align:center;color:#8899aa;font-size:12px}
+.sc-table{width:100%;border-collapse:collapse;font-size:11px}
+.sc-table th{background:#0f1923;padding:5px 6px;text-align:left;font-weight:600;color:#8899aa;border-bottom:1px solid #2a3a4a;white-space:nowrap;font-size:10px;position:sticky;top:0;z-index:1}
+.sc-table td{padding:4px 6px;border-bottom:1px solid #1a2a3a;white-space:nowrap}
+.sc-table tr.fund-row{cursor:pointer;transition:background .1s}
+.sc-table tr.fund-row:hover{background:#1f3142}
+.sc-table tr.fund-row td:first-child{color:#ffd700;font-family:monospace}
+.sc-tag.attention{background:rgba(255,99,71,.2);color:#ff6347}
+.sc-tag.strong{background:#dc143c;color:#fff}
+.sc-tag.avoid{background:rgba(34,187,68,.2);color:#22bb44}
+.sc-tag.watch{background:#2a3a4a;color:#8899aa}
+
+/* ==== Tab2: 详情分布 ==== */
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.cat-card{background:#1a2a3a;border-radius:8px;border:1px solid #2a3a4a;overflow:hidden}
+.cat-card-header{padding:10px 14px;background:#1f3142;font-size:14px;font-weight:700;color:#ffd700;border-bottom:1px solid #2a3a4a;display:flex;justify-content:space-between;align-items:center}
+.cat-card-header .count{font-size:11px;color:#8899aa;font-weight:400}
+.cat-card-body{padding:8px 0}
+.cat-fund-row{display:flex;align-items:center;padding:8px 14px;cursor:pointer;transition:background .12s;border-bottom:1px solid #1a2a3a;gap:10px}
+.cat-fund-row:hover{background:#1f3142}
+.cat-fund-row:last-child{border-bottom:none}
+.cat-fund-row .cfr-code{font-family:monospace;font-size:12px;color:#ffd700;width:60px;flex-shrink:0}
+.cat-fund-row .cfr-name{flex:1;font-size:13px;color:#e0e0e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-fund-row .cfr-score{font-size:12px;font-weight:700;width:36px;text-align:right}
+.cat-fund-row .cfr-change{font-size:12px;width:60px;text-align:right}
+.cat-fund-empty{padding:20px;text-align:center;color:#556677;font-size:13px}
+
+/* ==== Tab3: 持仓 ==== */
+.portfolio-summary{display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap}
+.pf-sum-card{flex:1;min-width:140px;background:#1a2a3a;border-radius:6px;padding:12px 16px;border:1px solid #2a3a4a;text-align:center}
+.pf-sum-card .ps-label{font-size:11px;color:#8899aa}
+.pf-sum-card .ps-value{font-size:18px;font-weight:700;margin-top:4px}
+.pf-table{width:100%;border-collapse:collapse;font-size:12px}
+.pf-table th{background:#1a2a3a;padding:8px 8px;text-align:left;font-weight:600;color:#8899aa;border-bottom:2px solid #2a3a4a;white-space:nowrap;font-size:11px}
+.pf-table td{padding:7px 8px;border-bottom:1px solid #1a2a3a;vertical-align:middle}
+.pf-table td input{background:#0f1923;border:1px solid #2a3a4a;color:#e0e0e0;padding:4px 6px;border-radius:4px;font-size:12px;width:80px}
+.pf-table td input:focus{outline:none;border-color:#ffd700}
+.pf-table td input.pf-date{width:95px}
+.pf-table td input.pf-time{width:55px}
+.pf-table td input.pf-readonly{background:transparent;border:1px solid transparent;color:#8899aa;cursor:default;width:70px}
+.pf-table .pf-code{font-family:monospace;color:#ffd700}
+.pf-table .pf-advice{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap}
+.pf-empty{text-align:center;padding:48px 20px;color:#8899aa;font-size:14px}
+.pf-empty a{color:#ffd700;text-decoration:underline;cursor:pointer}
+.pf-remove-btn{background:none;border:1px solid transparent;color:#556677;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:3px}
+.pf-remove-btn:hover{color:#ff6347;border-color:#ff6347}
+.pf-new-hint{border:1px dashed #ffd700!important;background:rgba(255,215,0,.05)!important;padding:4px 6px;width:85px!important}
+
+/* ==== Tab4: 仅监控 ==== */
+.watch-controls{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
+.watch-controls .ctrl-btn{padding:5px 12px;border-radius:5px;background:#1a2a3a;color:#8899aa;border:1px solid #2a3a4a;cursor:pointer;font-size:12px;transition:.15s;white-space:nowrap}
+.watch-controls .ctrl-btn:hover,.watch-controls .ctrl-btn.active{background:#ffd700;color:#0f1923;border-color:#ffd700}
+.watch-controls .ctrl-sep{width:1px;height:20px;background:#2a3a4a;margin:0 4px}
+.watch-table-wrap{overflow-x:auto}
+.watch-table{width:100%;border-collapse:collapse;font-size:12px}
+.watch-table th{background:#1a2a3a;padding:8px 8px;text-align:left;font-weight:600;color:#8899aa;border-bottom:2px solid #2a3a4a;cursor:pointer;white-space:nowrap;font-size:11px}
+.watch-table th:hover{color:#ffd700}
+.watch-table td{padding:7px 8px;border-bottom:1px solid #1a2a3a;white-space:nowrap}
+.watch-table tr.fund-row{cursor:pointer;transition:background .1s}
+.watch-table tr.fund-row:hover{background:#1f3142}
+.watch-table tr.fund-row td:first-child{color:#ffd700;font-family:monospace}
+
+.signal-tag{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;color:#fff}
+.signal-strong_buy{background:#dc143c}.signal-buy{background:#ff6347}
+.signal-hold{background:#ffa500;color:#333}.signal-sell{background:#2e8b57}
+.signal-strong_sell{background:#228b22}
+.score-bar{display:inline-block;width:40px;height:4px;background:#2a3a4a;border-radius:2px;vertical-align:middle;margin-left:4px;overflow:hidden}
+.score-fill{height:100%;border-radius:2px}
+
+/* 搜索 */
+.search-wrap{position:relative;display:inline-block}
+.search-wrap input.search-box{padding:6px 12px;border-radius:5px;border:1px solid #2a3a4a;background:#1a2a3a;color:#e0e0e0;width:220px;font-size:12px}
+.search-wrap input.search-box:focus{outline:none;border-color:#ffd700}
+.search-dropdown{display:none;position:absolute;top:100%;left:0;width:380px;background:#1a2a3a;border:1px solid #2a3a4a;border-radius:6px;max-height:380px;overflow-y:auto;z-index:500;margin-top:4px;box-shadow:0 6px 24px rgba(0,0,0,.6)}
+.search-dropdown.show{display:block}
+.sd-item{padding:8px 12px;border-bottom:1px solid #1a2a3a;display:flex;align-items:center;gap:10px;justify-content:space-between}
+.sd-item:hover{background:#1f3142}
+.sd-info{flex:1;min-width:0}
+.sd-code{color:#ffd700;font-family:monospace;font-size:12px;margin-right:8px}
+.sd-name{color:#e0e0e0;font-size:13px;font-weight:600}
+.sd-meta{font-size:10px;color:#8899aa;margin-top:2px}
+.sd-actions{display:flex;gap:4px;flex-shrink:0}
+.sd-btn{padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;border:1px solid;transition:.12s;white-space:nowrap}
+.sd-btn-position{color:#ffd700;border-color:#ffd700;background:transparent}
+.sd-btn-position:hover{background:rgba(255,215,0,.15)}
+.sd-btn-watch{color:#8899aa;border-color:#2a3a4a;background:transparent}
+.sd-btn-watch:hover{background:#1f3142;border-color:#8899aa}
+.sd-loading,.sd-empty{padding:16px;color:#8899aa;font-size:12px;text-align:center}
+
+/* Toast / Modal */
+.toast{position:fixed;top:16px;right:16px;background:#ffd700;color:#0f1923;padding:10px 20px;border-radius:6px;font-weight:700;z-index:10000;opacity:0;transform:translateY(-10px);transition:.25s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:9998;justify-content:center;align-items:center}
+.modal-overlay.show{display:flex}
+.modal{background:#152231;border-radius:12px;border:1px solid #2a3a4a;width:90vw;max-width:860px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid #2a3a4a}
+.modal-header h2{font-size:16px;color:#ffd700;margin:0}
+.modal-header .close-btn{background:none;border:none;color:#8899aa;font-size:22px;cursor:pointer;padding:0 4px;line-height:1}
+.modal-header .close-btn:hover{color:#e0e0e0}
+.modal-body{padding:16px 20px}
+.modal-info{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px}
+.modal-info .item{font-size:13px;color:#8899aa}
+.modal-info .item span{color:#e0e0e0;font-weight:600}
+.range-tabs{display:flex;gap:6px;margin-bottom:14px}
+.range-tab{padding:5px 16px;border-radius:16px;cursor:pointer;background:#1a2a3a;border:1px solid #2a3a4a;font-size:12px;color:#8899aa;transition:.15s;user-select:none}
+.range-tab:hover{border-color:#ffd700;color:#ffd700}
+.range-tab.active{background:#ffd700;color:#0f1923;border-color:#ffd700;font-weight:700}
+#fund-chart{width:100%;height:380px}
+.chart-loading,.chart-error{display:flex;justify-content:center;align-items:center;height:380px;color:#8899aa;font-size:13px}
+
+/* 买入信号按钮 */
+.buy-sig-btn{padding:7px 14px;border-radius:6px;background:transparent;color:#ff6347;border:1px solid #ff6347;font-size:12px;font-weight:600;cursor:pointer;transition:.2s;white-space:nowrap}
+.buy-sig-btn:hover{background:rgba(255,99,71,.15)}
+.buy-sig-btn.has-sig{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,99,71,.4)}50%{box-shadow:0 0 0 6px rgba(255,99,71,0)}}
+
+/* 侧边栏 */
+.side-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9990}
+.side-overlay.show{display:block}
+.side-panel{position:fixed;top:0;right:-440px;width:420px;height:100vh;background:#0f1923;border-left:1px solid #2a3a4a;z-index:9991;transition:right .3s ease;display:flex;flex-direction:column;box-shadow:-4px 0 30px rgba(0,0,0,.5)}
+.side-panel.show{right:0}
+.side-panel-header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#1a2a3a;border-bottom:1px solid #2a3a4a;flex-shrink:0}
+.side-panel-header h2{font-size:16px;color:#ffd700;margin:0}
+.side-panel-close{background:none;border:none;color:#8899aa;font-size:22px;cursor:pointer;padding:0 6px;line-height:1}
+.side-panel-body{flex:1;overflow-y:auto;padding:12px 16px}
+.side-panel-empty{text-align:center;padding:48px 16px;color:#8899aa;font-size:14px}
+.sig-item{background:#1a2a3a;border-radius:8px;margin-bottom:8px;border:1px solid #2a3a4a;overflow:hidden}
+.sig-item-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;cursor:pointer}
+.sig-item-header:hover{background:#1f3142}
+.sig-item-body{display:none;padding:0 14px 12px;border-top:1px solid #2a3a4a}
+.sig-item.expanded .sig-item-body{display:block}
+.news-link{display:block;padding:4px 0;font-size:12px;color:#c0c0c0;text-decoration:none;border-bottom:1px solid #1a2a3a}
+.news-link:hover{color:#ffd700}
+
+.eval-card{background:#1a2a3a;border-radius:8px;border:1px solid #2a3a4a;margin-bottom:8px;overflow:hidden}
+.eval-card-header{display:flex;align-items:center;padding:12px 16px;cursor:pointer;gap:12px;transition:.15s}
+.eval-card-header:hover{background:#1f3142}
+.eval-card-header .ec-code{font-family:monospace;font-size:13px;color:#ffd700;width:70px}
+.eval-card-header .ec-name{font-size:14px;font-weight:600;color:#e0e0e0;flex:1}
+.eval-card-header .ec-score{font-size:14px;font-weight:700;width:40px;text-align:right}
+.eval-card-header .ec-change{font-size:13px;width:60px;text-align:right}
+.eval-card-header .ec-arrow{color:#8899aa;font-size:12px;transition:.2s}
+.eval-card.expanded .ec-arrow{transform:rotate(180deg)}
+.eval-card-body{display:none;padding:0 16px 14px;border-top:1px solid #1f3142}
+.eval-card.expanded .eval-card-body{display:block}
+.eval-reason{padding:6px 0;font-size:12px;color:#c0c0c0;border-bottom:1px solid #1a2a3a}
+.eval-reason:last-child{border-bottom:none}
+.eval-reason .er-label{color:#8899aa;margin-right:8px}
+.eval-reason .er-value{color:#ffd700;font-weight:600}
+.eval-filter-btn{padding:4px 12px;border-radius:14px;border:1px solid #334455;background:transparent;color:#8899aa;cursor:pointer;font-size:12px;transition:.2s}
+.eval-filter-btn:hover{background:#1a2a3a;color:#ccddee}
+.eval-filter-active{background:#ffd700!important;color:#0f1923!important;border-color:#ffd700!important}
+.eval-monitor-badge{display:none;padding:2px 8px;border-radius:10px;background:#2a6e3f;color:#90ee90;font-size:10px;margin-left:6px}
+</style>
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<!-- 弹窗 -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">基金走势</h2>
+      <button class="close-btn" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-info" id="modalInfo"></div>
+      <div class="range-tabs" id="rangeTabs">
+        <span class="range-tab active" data-range="1m">1个月</span>
+        <span class="range-tab" data-range="3m">3个月</span>
+        <span class="range-tab" data-range="6m">6个月</span>
+        <span class="range-tab" data-range="1y">1年</span>
+      </div>
+      <div class="chart-loading" id="chartLoading">加载中...</div>
+      <div class="chart-error" id="chartError" style="display:none">数据加载失败</div>
+      <div id="fund-chart"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 买入信号侧边栏 -->
+<div class="side-overlay" id="sideOverlay" onclick="if(event.target===this)closeBuyPanel()"></div>
+<div class="side-panel" id="sidePanel">
+  <div class="side-panel-header">
+    <div style="display:flex;align-items:center">
+      <h2>买入信号</h2>
+      <span style="font-size:12px;color:#8899aa;margin-left:8px" id="sigStat"></span>
+    </div>
+    <button class="side-panel-close" onclick="closeBuyPanel()">&times;</button>
+  </div>
+  <div class="side-panel-body" id="sideBody">
+    <div id="sigList"></div>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div class="header">
+  <div class="header-left">
+    <h1>基金实时监控看板</h1>
+    <div class="meta">数据时间: <strong id="updateTime">2026-06-03 22:18:43</strong> &nbsp;|&nbsp; 来源：东方财富 &nbsp;|&nbsp; 监控<strong id="monCount">31</strong>只 / 目录<strong id="totalCount">260</strong>只</div>
+  </div>
+  <div class="header-right">
+    <div class="search-wrap">
+      <input type="text" class="search-box" id="search" placeholder="搜索基金代码/名称..." oninput="handleSearchInput()" autocomplete="off">
+      <select id="search-filter-type" onchange="handleSearchInput()" style="padding:4px 8px;border-radius:4px;background:#1a2a3a;color:#ccddee;border:1px solid #334455;font-size:12px;margin-left:6px">
+        <option value="">全部类型</option>
+        <option value="ETF">ETF</option>
+        <option value="LOF">LOF</option>
+        <option value="QDII">QDII</option>
+        <option value="混合型">混合型</option>
+        <option value="股票型">股票型</option>
+      </select>
+      <div id="search-dropdown" class="search-dropdown"></div>
+    </div>
+    <button class="buy-sig-btn" id="buySigBtn" onclick="openBuyPanel()">买入信号</button>
+    <div class="auto-toggle on" id="autoToggle" onclick="toggleAuto()">
+      <div class="switch"></div><span>自动刷新</span>
+    </div>
+    <span class="auto-interval" id="countdownText">60s</span>
+    <button class="refresh-btn" id="refreshBtn" onclick="refreshData(false)">
+      <span class="btn-text">刷新数据</span><span class="spinner"></span>
+    </button>
+  </div>
+</div>
+
+<div class="index-cards"><div class="idx-card"><div class="label">上证指数</div><div class="value up">4083.97</div><div class="sub up">+0.22%  +8.87</div></div>
+<div class="idx-card"><div class="label">深证成指</div><div class="value up">15704.71</div><div class="sub up">+0.73%  +113.58</div></div>
+<div class="idx-card"><div class="label">创业板指</div><div class="value up">4122.99</div><div class="sub up">+1.65%  +67.12</div></div>
+<div class="idx-card"><div class="label">沪深300</div><div class="value up">4938.81</div><div class="sub up">+0.49%  +24.25</div></div>
+<div class="idx-card"><div class="label">科创50</div><div class="value up">1726.18</div><div class="sub up">+2.11%  +35.62</div></div>
+<div class="idx-card"><div class="label">主力资金(亿)</div><div class="value down">-99.3</div><div class="sub">超大单 +35.5 | 大单 -134.8</div></div>
+</div>
+
+<!-- 主导航 Tab -->
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="sector">行业板块</button>
+  <button class="tab-btn" data-tab="portfolio">持仓</button>
+  <button class="tab-btn" data-tab="watch">仅监控</button>
+  <button class="tab-btn" data-tab="evaluate">建议买入</button>
+</div>
+
+<!-- Tab1: 行业板块 -->
+<div class="tab-panel active" id="panel-sector">
+  <div class="sector-grid" id="sector-grid"></div>
+  <div style="margin-top:16px">
+    <div class="chart-box" style="background:#1a2a3a;border-radius:8px;padding:10px;border:1px solid #2a3a4a;height:340px">
+      <h3 style="font-size:13px;color:#8899aa;margin-bottom:6px">行业板块资金流 Top15</h3>
+      <div id="sector-chart" style="width:100%;height:300px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Tab2: 持仓 -->
+<div class="tab-panel" id="panel-portfolio">
+  <div class="portfolio-summary" id="pf-summary"></div>
+  <div style="overflow-x:auto">
+    <table class="pf-table" id="pf-table">
+      <thead><tr>
+        <th>代码</th><th>名称</th><th>投入金额</th><th>买入净值</th><th>买入日期</th><th>时间</th>
+        <th>份额</th><th>最新净值</th><th>当日收益</th><th>累计收益</th><th>收益率</th>
+        <th>信号</th><th>建议</th><th></th>
+      </tr></thead>
+      <tbody id="pf-body"></tbody>
+    </table>
+  </div>
+  <div class="pf-empty" id="pf-empty" style="display:none">
+    暂无持仓。在搜索框中搜索基金，点击 <strong>【加持仓】</strong> 添加。
+  </div>
+</div>
+
+<!-- Tab3: 仅监控 -->
+<div class="tab-panel" id="panel-watch">
+  <div class="watch-controls">
+    <input type="text" placeholder="过滤代码/名称..." id="watchFilter" oninput="renderWatchTable()" style="padding:5px 10px;border-radius:5px;border:1px solid #2a3a4a;background:#1a2a3a;color:#e0e0e0;width:160px;font-size:12px">
+    <span class="ctrl-sep"></span>
+    <button class="ctrl-btn active" data-signal="all" onclick="setWatchSignal('all',this)">全部</button>
+    <button class="ctrl-btn" data-signal="strong_buy,buy" onclick="setWatchSignal('strong_buy,buy',this)" style="color:#ff6347">买入</button>
+    <button class="ctrl-btn" data-signal="hold" onclick="setWatchSignal('hold',this)" style="color:#ffa500">持有</button>
+    <button class="ctrl-btn" data-signal="sell,strong_sell" onclick="setWatchSignal('sell,strong_sell',this)" style="color:#2e8b57">卖出</button>
+    <span class="ctrl-sep"></span>
+    <button class="ctrl-btn" onclick="setWatchSort('score',-1)">评分↓</button>
+    <button class="ctrl-btn" onclick="setWatchSort('score',1)">评分↑</button>
+    <button class="ctrl-btn" onclick="setWatchSort('change',-1)">涨幅↓</button>
+  </div>
+  <div class="watch-table-wrap">
+    <table class="watch-table" id="watch-table"><thead><tr>
+      <th onclick="setWatchSort('code')">代码 ↕</th>
+      <th onclick="setWatchSort('name')">名称 ↕</th>
+      <th onclick="setWatchSort('category')">分类 ↕</th>
+      <th onclick="setWatchSort('nav')">净值 ↕</th>
+      <th onclick="setWatchSort('change')">涨跌 ↕</th>
+      <th onclick="setWatchSort('rsi')">RSI ↕</th>
+      <th onclick="setWatchSort('momentum')">5日动量 ↕</th>
+      <th onclick="setWatchSort('score')">评分 ↕</th>
+      <th>信号</th>
+    </tr></thead><tbody id="watch-body"></tbody></table>
+  </div>
+</div>
+
+<!-- Tab4: 建议买入 -->
+<div class="tab-panel" id="panel-evaluate">
+  <div id="eval-entry" style="text-align:center;padding:60px 20px">
+    <div style="font-size:48px;color:#2a3a4a;margin-bottom:16px">&#9889;</div>
+    <div style="font-size:16px;color:#8899aa;margin-bottom:8px">全量基金买入信号评估</div>
+    <div style="font-size:12px;color:#556677;margin-bottom:24px">
+      目录基金约 260 只代表性基金，预计耗时 15~25 秒<br/>
+      所有基金约 20000 只，预计耗时 8~15 分钟，消耗较多流量<br/>
+      结果仅展示建议买入指数最高的前 100 只
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center">
+      <button onclick="startEvaluate('catalog')" style="padding:12px 28px;font-size:14px;font-weight:700;border-radius:8px;background:#ffd700;color:#0f1923;border:none;cursor:pointer;transition:.2s">计算目录基金</button>
+      <button onclick="startEvaluate('all')" style="padding:12px 28px;font-size:14px;font-weight:700;border-radius:8px;background:#1a2a3a;color:#ffd700;border:2px solid #ffd700;cursor:pointer;transition:.2s">计算所有基金</button>
+    </div>
+  </div>
+  <div id="eval-progress" style="display:none;text-align:center;padding:40px 20px">
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;color:#8899aa;margin-bottom:4px">评估范围: <span id="eval-mode-label">--</span></div>
+      <div style="font-size:14px;color:#ffd700;margin-bottom:8px">评估进行中...</div>
+      <div style="font-size:12px;color:#8899aa">
+        已完成 <span id="eval-done">0</span> / <span id="eval-total">0</span> 只
+      </div>
+      <div style="width:400px;max-width:80vw;height:6px;background:#2a3a4a;border-radius:3px;margin:12px auto;overflow:hidden">
+        <div id="eval-bar" style="height:100%;background:linear-gradient(90deg,#ffd700,#ff6347);border-radius:3px;width:0%;transition:width .3s"></div>
+      </div>
+      <div style="font-size:12px;color:#8899aa">
+        预计剩余: <span id="eval-remaining">--</span> 秒
+      </div>
+    </div>
+  </div>
+  <div id="eval-results" style="display:none">
+    <div style="margin-bottom:12px;font-size:13px;color:#8899aa">
+      共评估 <strong id="eval-total-result">0</strong> 只基金，发现 <strong style="color:#ff6347" id="eval-buy-count">0</strong> 个买入信号
+    </div>
+    <button id="eval-batch-add-btn" onclick="batchAddToWatch()" style="padding:8px 20px;border-radius:6px;background:#ff6347;color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:12px;transition:.2s">一键加入监控</button>
+    <div id="eval-filters" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:6px"></div>
+    <div id="eval-signals-list"></div>
+    <div id="eval-reset-area" style="text-align:center;padding:20px;display:none"><button onclick="resetEvaluate()" style="padding:8px 20px;border-radius:6px;background:#1a2a3a;color:#ffd700;border:1px solid #ffd700;cursor:pointer;font-size:13px">重新评估</button></div>
+  </div>
+</div>
+
+<script>
+var RAW = [{"code": "510300", "name": "沪深300ETF华泰柏瑞", "category": "宽基指数", "nav": "4.9619", "change": 0.49, "signal": "hold", "score": 51.5, "rsi": 52.6, "momentum": 0.66, "drawdown": 4.27, "monitored": true, "searched": false, "ftype": ""}, {"code": "510310", "name": "沪深300ETF易方达", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159919", "name": "沪深300ETF嘉实", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "510330", "name": "沪深300ETF华夏", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "563520", "name": "沪深300ETF永赢", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "510500", "name": "中证500ETF南方", "category": "宽基指数", "nav": "8.4545", "change": 0.49, "signal": "hold", "score": 51.2, "rsi": 39.0, "momentum": -1.89, "drawdown": 7.09, "monitored": true, "searched": false, "ftype": ""}, {"code": "512500", "name": "中证500ETF华夏", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159922", "name": "中证500ETF嘉实", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512100", "name": "中证1000ETF南方", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159845", "name": "中证1000ETF华夏", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "560010", "name": "中证1000ETF广发", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159629", "name": "中证1000ETF富国", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "563300", "name": "中证2000ETF华泰柏瑞", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159531", "name": "中证2000ETF南方", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159552", "name": "中证2000增强ETF招商", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "510050", "name": "上证50ETF华夏", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "510710", "name": "上证50ETF博时", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159915", "name": "创业板ETF易方达", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159949", "name": "创业板50ETF华安", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159952", "name": "创业板ETF广发", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159977", "name": "创业板ETF天弘", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "588000", "name": "科创50ETF华夏", "category": "宽基指数", "nav": "1.8198", "change": 2.11, "signal": "hold", "score": 45.5, "rsi": 50.2, "momentum": -4.79, "drawdown": 13.45, "monitored": true, "searched": false, "ftype": ""}, {"code": "588050", "name": "科创50ETF工银", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "588080", "name": "科创50ETF易方达", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "588190", "name": "科创100ETF银华", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "588210", "name": "科创100ETF易方达", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "588220", "name": "科创100ETF鹏华", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159591", "name": "A50ETF富国", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "560350", "name": "中证A50ETF摩根", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "560360", "name": "软件ETF万家", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159338", "name": "中证A500ETF国泰", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "563220", "name": "A500ETF富国", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159351", "name": "A500ETF嘉实", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159352", "name": "A500ETF南方", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159601", "name": "A50ETF华夏", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "560050", "name": "中国A50ETF汇添富", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159901", "name": "深证100ETF易方达", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159716", "name": "深证100ETF华宝", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "510980", "name": "上证指数ETF汇添富", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "510760", "name": "上证指数ETF国泰", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159628", "name": "国证2000ETF万家", "category": "宽基指数", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512480", "name": "半导体ETF国联安", "category": "行业主题", "nav": "2.1452", "change": 3.1, "signal": "hold", "score": 51.5, "rsi": 55.2, "momentum": -5.22, "drawdown": 18.89, "monitored": true, "searched": false, "ftype": ""}, {"code": "159995", "name": "芯片ETF华夏", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159813", "name": "半导体ETF鹏华", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512760", "name": "芯片ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516640", "name": "芯片ETF富国", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512010", "name": "医药ETF易方达", "category": "行业主题", "nav": "0.3295", "change": -1.76, "signal": "hold", "score": 55.5, "rsi": 22.7, "momentum": -3.8, "drawdown": 11.42, "monitored": true, "searched": false, "ftype": ""}, {"code": "159938", "name": "医药ETF广发", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159883", "name": "医疗器械ETF永赢", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512170", "name": "医疗ETF华宝", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159892", "name": "恒生医药ETF华夏", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512290", "name": "生物医药ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159928", "name": "消费ETF汇添富", "category": "行业主题", "nav": "0.6697", "change": -1.37, "signal": "hold", "score": 56.2, "rsi": 23.4, "momentum": -1.82, "drawdown": 9.32, "monitored": true, "searched": false, "ftype": ""}, {"code": "512600", "name": "消费ETF嘉实", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515650", "name": "消费50ETF富国", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159825", "name": "农业ETF富国", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159843", "name": "食品饮料ETF招商", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512690", "name": "酒ETF鹏华", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515790", "name": "光伏ETF华泰柏瑞", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516160", "name": "新能源ETF南方", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159752", "name": "新能源ETF申万菱信", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159806", "name": "新能源车ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159840", "name": "锂电池ETF工银", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159857", "name": "光伏ETF天弘", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516180", "name": "光伏ETF平安", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512660", "name": "军工ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512670", "name": "国防ETF鹏华", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512710", "name": "军工龙头ETF富国", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512800", "name": "银行ETF华宝", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515290", "name": "银行ETF天弘", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512880", "name": "证券ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159841", "name": "证券ETF天弘", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512000", "name": "券商ETF华宝", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512200", "name": "房地产ETF南方", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515060", "name": "房地产ETF华夏", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515220", "name": "煤炭ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515210", "name": "钢铁ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159871", "name": "有色ETF银华", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512400", "name": "有色金属ETF南方", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159876", "name": "有色ETF华宝", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159865", "name": "养殖ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159866", "name": "日经ETF工银", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516810", "name": "农业ETF华夏", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512980", "name": "传媒ETF广发", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159805", "name": "传媒ETF鹏华", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516510", "name": "云计算ETF易方达", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515050", "name": "通信ETF华夏", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515880", "name": "通信ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159811", "name": "5GETF博时", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512720", "name": "计算机ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516100", "name": "金融科技ETF华夏", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159998", "name": "计算机ETF天弘", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516110", "name": "汽车ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516520", "name": "智能驾驶ETF华泰柏瑞", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159889", "name": "智能汽车ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159611", "name": "电力ETF广发", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "561560", "name": "电力ETF华泰柏瑞", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159996", "name": "家电ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "561120", "name": "家电ETF富国", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159869", "name": "游戏ETF华夏", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516010", "name": "游戏ETF国泰", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159819", "name": "人工智能ETF易方达", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515070", "name": "人工智能ETF华夏", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159929", "name": "医药ETF汇添富", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159770", "name": "机器人ETF天弘", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "562500", "name": "机器人ETF华夏", "category": "行业主题", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "510880", "name": "红利ETF华泰柏瑞", "category": "策略风格", "nav": "3.3249", "change": 0.45, "signal": "hold", "score": 51.8, "rsi": 68.0, "momentum": 4.93, "drawdown": 5.13, "monitored": true, "searched": false, "ftype": ""}, {"code": "515080", "name": "中证红利ETF招商", "category": "策略风格", "nav": "1.6038", "change": -0.04, "signal": "hold", "score": 54.5, "rsi": 53.3, "momentum": 3.42, "drawdown": 4.33, "monitored": true, "searched": false, "ftype": ""}, {"code": "512890", "name": "红利低波ETF华泰柏瑞", "category": "策略风格", "nav": "1.1708", "change": -0.86, "signal": "hold", "score": 51.5, "rsi": 48.5, "momentum": 1.98, "drawdown": 3.32, "monitored": true, "searched": false, "ftype": ""}, {"code": "159581", "name": "红利ETF万家", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515700", "name": "新能源车ETF平安", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512040", "name": "价值100ETF富国", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "510210", "name": "上证指数ETF富国", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159740", "name": "恒生科技ETF大成", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159967", "name": "创业板成长ETF华夏", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515030", "name": "新能源车ETF华夏", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512580", "name": "环保ETF广发", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "515450", "name": "红利低波50ETF南方", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516970", "name": "基建ETF广发", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "516090", "name": "新能源ETF易方达", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512950", "name": "央企改革ETF华夏", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "512960", "name": "央企结构调整ETF博时", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "517090", "name": "央企共赢ETF国泰", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "517180", "name": "中国国企ETF南方", "category": "策略风格", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513050", "name": "中概互联网ETF易方达", "category": "跨境海外", "nav": "", "change": 0.0, "signal": "hold", "score": 51.5, "rsi": 46.2, "momentum": 4.19, "drawdown": 11.33, "monitored": true, "searched": false, "ftype": ""}, {"code": "159607", "name": "中概互联网ETF嘉实", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513220", "name": "中概互联ETF招商", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159920", "name": "恒生ETF华夏", "category": "跨境海外", "nav": "1.5214", "change": -1.48, "signal": "hold", "score": 51.2, "rsi": 38.8, "momentum": 1.2, "drawdown": 6.1, "monitored": true, "searched": false, "ftype": ""}, {"code": "510900", "name": "恒生中国企业ETF易方达", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513330", "name": "恒生互联网ETF华夏", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513180", "name": "恒生科技ETF华夏", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513060", "name": "恒生医疗ETF博时", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159741", "name": "恒生科技ETF嘉实", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513100", "name": "纳指ETF国泰", "category": "跨境海外", "nav": "2.0857", "change": -0.06, "signal": "hold", "score": 51.8, "rsi": 70.9, "momentum": 2.04, "drawdown": 6.42, "monitored": true, "searched": false, "ftype": ""}, {"code": "159941", "name": "纳指ETF广发", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513500", "name": "标普500ETF博时", "category": "跨境海外", "nav": "2.4395", "change": -0.66, "signal": "hold", "score": 46.5, "rsi": 65.6, "momentum": 1.08, "drawdown": 3.22, "monitored": true, "searched": false, "ftype": ""}, {"code": "513520", "name": "日经ETF华夏", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513880", "name": "日经225ETF华安", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513030", "name": "德国ETF华安", "category": "跨境海外", "nav": "", "change": 0.0, "signal": "hold", "score": 48.8, "rsi": 60.8, "momentum": -0.49, "drawdown": 5.32, "monitored": true, "searched": false, "ftype": ""}, {"code": "159696", "name": "纳指ETF易方达", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159615", "name": "恒生生物科技ETF南方", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "520830", "name": "沙特ETF华泰柏瑞", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159329", "name": "沙特ETF南方", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "513080", "name": "法国ETF华安", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159687", "name": "亚太精选ETF南方", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159699", "name": "恒生消费ETF广发", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159954", "name": "恒生中国企业ETF南方", "category": "跨境海外", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "511260", "name": "十年国债ETF国泰", "category": "债券固收", "nav": "135.9871", "change": -0.1, "signal": "hold", "score": 40.8, "rsi": 82.7, "momentum": 0.17, "drawdown": 0.67, "monitored": true, "searched": false, "ftype": ""}, {"code": "511010", "name": "国债ETF国泰", "category": "债券固收", "nav": "141.3871", "change": -0.07, "signal": "hold", "score": 40.8, "rsi": 81.7, "momentum": 0.11, "drawdown": 0.44, "monitored": true, "searched": false, "ftype": ""}, {"code": "511090", "name": "30年国债ETF鹏扬", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "511520", "name": "政金债ETF富国", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "005726", "name": "国泰价值精选灵活配置混合A", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "006030", "name": "南方昌元可转债债券A", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "006031", "name": "南方昌元可转债债券C", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "511220", "name": "城投债ETF海富通", "category": "债券固收", "nav": "10.3731", "change": 0.01, "signal": "hold", "score": 40.8, "rsi": 100.0, "momentum": 0.11, "drawdown": 0.37, "monitored": true, "searched": false, "ftype": ""}, {"code": "511030", "name": "公司债ETF平安", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "511360", "name": "短融ETF海富通", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "003547", "name": "鹏华丰禄债券", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "007536", "name": "博时富乐纯债债券A", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000345", "name": "鹏华丰融定开债", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001299", "name": "兴业添利债券", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "161119", "name": "易方达中债新综指发起式(LOF)A", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "002550", "name": "嘉实稳荣债券", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "003376", "name": "广发中债7-10年国开债指数A", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000139", "name": "富国国有企业债债券A/B", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000045", "name": "工银产业债债券A", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "110027", "name": "易方达安心回报债券A", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000563", "name": "南方通利债券A", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "110017", "name": "易方达增强回报债券A", "category": "债券固收", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "163406", "name": "兴全合润混合A", "category": "混合型", "nav": "2.5992", "change": 1.12, "signal": "hold", "score": 53.8, "rsi": 50.5, "momentum": -0.52, "drawdown": 6.03, "monitored": true, "searched": false, "ftype": ""}, {"code": "005827", "name": "易方达蓝筹精选混合", "category": "混合型", "nav": "1.5961", "change": -1.5, "signal": "hold", "score": 51.2, "rsi": 27.3, "momentum": -0.58, "drawdown": 8.84, "monitored": true, "searched": false, "ftype": ""}, {"code": "519772", "name": "交银新生活力灵活配置混合A", "category": "混合型", "nav": "2.3073", "change": 1.08, "signal": "hold", "score": 43.2, "rsi": 41.6, "momentum": -3.02, "drawdown": 6.58, "monitored": true, "searched": false, "ftype": ""}, {"code": "162605", "name": "景顺长城鼎益混合(LOF)A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "260108", "name": "景顺长城新兴成长混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "519732", "name": "交银定期支付双息平衡混合", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "270002", "name": "广发稳健增长混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "161005", "name": "富国天惠成长混合(LOF)A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "163402", "name": "兴全趋势投资混合(LOF)", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "166001", "name": "中欧新趋势混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "166002", "name": "中欧新蓝筹混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000215", "name": "广发趋势优选灵活配置混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001182", "name": "易方达安心回馈混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001508", "name": "富国新动力灵活配置混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001875", "name": "前海开源沪港深优势精选混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000390", "name": "华商优势行业混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001316", "name": "安信稳健增值混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000529", "name": "广发竞争优势混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001112", "name": "东方红中国优势混合", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "002803", "name": "东方红沪港深混合", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "002939", "name": "广发创新升级混合", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "002168", "name": "嘉实智能汽车股票", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "003095", "name": "中欧医疗健康混合A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "004450", "name": "嘉实前沿科技沪港深股票A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "004476", "name": "景顺长城沪港深领先科技股票A", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "004813", "name": "中欧先进制造股票C", "category": "混合型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000945", "name": "华夏医疗健康混合A", "category": "主动股票", "nav": "1.6075", "change": -1.38, "signal": "hold", "score": 50.2, "rsi": 24.8, "momentum": -5.23, "drawdown": 9.64, "monitored": true, "searched": false, "ftype": ""}, {"code": "001714", "name": "工银文体产业股票A", "category": "主动股票", "nav": "2.9145", "change": -0.6, "signal": "hold", "score": 51.2, "rsi": 28.9, "momentum": -0.62, "drawdown": 6.58, "monitored": true, "searched": false, "ftype": ""}, {"code": "000913", "name": "农银医疗保健股票", "category": "主动股票", "nav": "1.4567", "change": -1.16, "signal": "hold", "score": 52.5, "rsi": 17.1, "momentum": -5.52, "drawdown": 11.95, "monitored": true, "searched": false, "ftype": ""}, {"code": "001410", "name": "信澳新能源产业股票A", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000628", "name": "大成高鑫股票A", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001717", "name": "工银前沿医疗股票A", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001718", "name": "工银物流产业股票A", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000988", "name": "嘉实全球互联网股票人民币", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001479", "name": "中邮风格轮动灵活配置混合", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000409", "name": "鹏华环保产业股票", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000893", "name": "工银创新动力股票", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001361", "name": "景顺长城中证科技传媒通信150ETF联接A", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001616", "name": "嘉实环保低碳股票", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000978", "name": "景顺长城量化精选股票A", "category": "主动股票", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "518880", "name": "黄金ETF华安", "category": "商品另类", "nav": "9.2578", "change": -0.13, "signal": "hold", "score": 51.2, "rsi": 29.9, "momentum": -1.0, "drawdown": 7.45, "monitored": true, "searched": false, "ftype": ""}, {"code": "159934", "name": "黄金ETF易方达", "category": "商品另类", "nav": "9.6715", "change": -0.13, "signal": "hold", "score": 51.2, "rsi": 29.9, "momentum": -1.0, "drawdown": 7.46, "monitored": true, "searched": false, "ftype": ""}, {"code": "159937", "name": "黄金ETF博时", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "518600", "name": "金ETF广发", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "160723", "name": "嘉实原油(QDII-LOF)", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "161129", "name": "易方达原油A类人民币", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "162411", "name": "华宝标普油气上游股票人民币A", "category": "商品另类", "nav": "0.8867", "change": -0.64, "signal": "hold", "score": 46.2, "rsi": 49.6, "momentum": 1.48, "drawdown": 8.35, "monitored": true, "searched": false, "ftype": ""}, {"code": "501018", "name": "南方原油A", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "508000", "name": "华安张江产业园REIT", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "508001", "name": "浙商沪杭甬REIT", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "508018", "name": "华夏中国交建REIT", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "508099", "name": "建信中关村REIT", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "508009", "name": "中金安徽交控REIT", "category": "商品另类", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000041", "name": "华夏全球股票(QDII)(人民币)", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000043", "name": "嘉实美国成长股票人民币", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "100061", "name": "富国中国中小盘混合(QDII)人民币A", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "118001", "name": "易方达亚洲精选股票", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "162415", "name": "华宝标普美国消费人民币A", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "539002", "name": "建信新兴市场混合(QDII)A", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "262001", "name": "景顺长城大中华混合(QDII)A人民币", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "163813", "name": "中银全球策略(QDII-FOF)A", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "486001", "name": "工银全球股票(QDII)人民币", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "486002", "name": "工银全球精选股票(QDII)", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "270023", "name": "广发全球精选股票(QDII)人民币A", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000934", "name": "国富大中华精选混合", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "001668", "name": "汇添富全球移动互联混合(QDII)人民币A", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "002891", "name": "华夏移动互联混合人民币", "category": "QDII基金", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "006880", "name": "交银安享稳健养老一年(FOF)A", "category": "FOF", "nav": "1.3056", "change": 0.05, "signal": "hold", "score": 48.2, "rsi": 38.0, "momentum": -0.19, "drawdown": 0.89, "monitored": true, "searched": false, "ftype": ""}, {"code": "006881", "name": "华宝大健康混合A", "category": "FOF", "nav": "1.9569", "change": -1.86, "signal": "hold", "score": 54.0, "rsi": 24.2, "momentum": -6.86, "drawdown": 16.14, "monitored": true, "searched": false, "ftype": ""}, {"code": "006882", "name": "华泰保兴健康消费A", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "007188", "name": "嘉实养老2050混合(FOF)A", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "007189", "name": "南华价值启航纯债债券A", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "007190", "name": "南华价值启航纯债债券C", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "008145", "name": "兴全优选进取三个月持有(FOF)A", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "008146", "name": "中银添瑞6个月A", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "008147", "name": "中银添瑞6个月C", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "009151", "name": "国寿策略优选3个月持有混合(FOF)", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "009152", "name": "南方瑞盛三年混合A", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "009153", "name": "南方瑞盛三年混合C", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "015287", "name": "永赢优质生活混合A", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "015288", "name": "永赢优质生活混合C", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "015289", "name": "格林高股息优选混合A", "category": "FOF", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "511880", "name": "银华日利ETF", "category": "货币型", "nav": "", "change": 0.0, "signal": "hold", "score": 40.8, "rsi": 100.0, "momentum": 0.02, "drawdown": 0.08, "monitored": true, "searched": false, "ftype": ""}, {"code": "511990", "name": "华宝添益ETF", "category": "货币型", "nav": "", "change": 0.0, "signal": "buy", "score": 60.5, "rsi": 50.7, "momentum": 4.77, "drawdown": 51.3, "monitored": true, "searched": false, "ftype": ""}, {"code": "511660", "name": "货币ETF建信", "category": "货币型", "nav": "", "change": 0.0, "signal": "hold", "score": 50.0, "rsi": 48.4, "momentum": -0.68, "drawdown": 20.47, "monitored": true, "searched": false, "ftype": ""}, {"code": "159001", "name": "货币ETF易方达", "category": "货币型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159002", "name": "易方达保证金货币B", "category": "货币型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "159003", "name": "招商快线ETF", "category": "货币型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000638", "name": "富国富钱包货币A", "category": "货币型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000639", "name": "宝盈祥瑞混合A", "category": "货币型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}, {"code": "000640", "name": "诺安理财宝货币A", "category": "货币型", "nav": "", "change": 0, "signal": "", "score": 0, "rsi": null, "momentum": null, "drawdown": null, "monitored": false, "searched": false, "ftype": ""}];
+var SECTOR = [{"name": "半导体", "code": "BK1036", "main_net": 80.43433984, "super_large_net": 103.182336, "change_pct": 2.31, "main_ratio": 1.8}, {"name": "通信设备", "code": "BK0448", "main_net": 60.76301312, "super_large_net": 65.70110976, "change_pct": 2.26, "main_ratio": 2.09}, {"name": "通信", "code": "BK1215", "main_net": 57.1254784, "super_large_net": 64.68042752, "change_pct": 2.08, "main_ratio": 1.84}, {"name": "通信网络设备及器件", "code": "BK1591", "main_net": 47.747008, "super_large_net": 33.74011648, "change_pct": 1.69, "main_ratio": 2.39}, {"name": "电子", "code": "BK1201", "main_net": 31.7079552, "super_large_net": 72.05138432, "change_pct": 0.72, "main_ratio": 0.32}, {"name": "半导体设备", "code": "BK1326", "main_net": 29.5544064, "super_large_net": 19.29411584, "change_pct": 3.6, "main_ratio": 5.52}, {"name": "小金属", "code": "BK1027", "main_net": 24.57723648, "super_large_net": 23.92534784, "change_pct": 3.61, "main_ratio": 3.71}, {"name": "集成电路封测", "code": "BK1328", "main_net": 24.04443392, "super_large_net": 40.97134848, "change_pct": 6.5, "main_ratio": 3.82}, {"name": "数字芯片设计", "code": "BK1331", "main_net": 21.9016448, "super_large_net": 35.839296, "change_pct": 1.95, "main_ratio": 1.19}, {"name": "钨", "code": "BK1625", "main_net": 16.6291888, "super_large_net": 14.16720096, "change_pct": 6.61, "main_ratio": 7.76}, {"name": "有色金属", "code": "BK0478", "main_net": 16.44688128, "super_large_net": 23.32900608, "change_pct": 1.3, "main_ratio": 0.92}, {"name": "机械设备", "code": "BK1205", "main_net": 13.41842688, "super_large_net": 22.8240384, "change_pct": 0.92, "main_ratio": 0.54}, {"name": "面板", "code": "BK1335", "main_net": 13.01000192, "super_large_net": 14.93147904, "change_pct": 2.62, "main_ratio": 2.28}, {"name": "光学光电子", "code": "BK1038", "main_net": 12.06772736, "super_large_net": 20.77026304, "change_pct": 1.94, "main_ratio": 1.13}, {"name": "磨具磨料", "code": "BK1397", "main_net": 10.7767184, "super_large_net": 9.06178736, "change_pct": 5.4, "main_ratio": 6.42}, {"name": "激光设备", "code": "BK1409", "main_net": 9.79482624, "super_large_net": 14.4574464, "change_pct": 4.43, "main_ratio": 3.0}, {"name": "通信终端及配件", "code": "BK1593", "main_net": 9.63232512, "super_large_net": 13.43904, "change_pct": 6.23, "main_ratio": 4.47}, {"name": "自动化设备", "code": "BK1237", "main_net": 7.67860224, "super_large_net": 11.44204032, "change_pct": 1.35, "main_ratio": 0.91}, {"name": "通用设备", "code": "BK0545", "main_net": 7.63983872, "super_large_net": 9.73022976, "change_pct": 1.05, "main_ratio": 0.83}, {"name": "稀土", "code": "BK1626", "main_net": 7.31179392, "super_large_net": 7.81214672, "change_pct": 6.48, "main_ratio": 6.07}, {"name": "航天装备Ⅲ", "code": "BK1385", "main_net": 6.70706704, "super_large_net": 3.6439704, "change_pct": 3.13, "main_ratio": 5.75}, {"name": "航天装备Ⅱ", "code": "BK1232", "main_net": 6.70706704, "super_large_net": 3.6439704, "change_pct": 3.13, "main_ratio": 5.75}, {"name": "膜材料", "code": "BK1439", "main_net": 6.47323024, "super_large_net": 10.44055472, "change_pct": 6.15, "main_ratio": 3.81}, {"name": "电能综合服务", "code": "BK1373", "main_net": 5.54794592, "super_large_net": 5.34770048, "change_pct": 5.95, "main_ratio": 6.17}, {"name": "基础化工", "code": "BK1206", "main_net": 4.34944768, "super_large_net": 12.84031488, "change_pct": 1.0, "main_ratio": 0.34}, {"name": "机器人", "code": "BK1408", "main_net": 4.3243496, "super_large_net": 3.02047744, "change_pct": 2.4, "main_ratio": 3.44}, {"name": "铅锌", "code": "BK1614", "main_net": 4.30628464, "super_large_net": 1.8285064, "change_pct": 1.67, "main_ratio": 3.93}, {"name": "塑料", "code": "BK0454", "main_net": 4.1228416, "super_large_net": 7.62098176, "change_pct": 2.25, "main_ratio": 1.22}, {"name": "半导体材料", "code": "BK1325", "main_net": 4.02159872, "super_large_net": 6.55337728, "change_pct": 1.57, "main_ratio": 0.97}, {"name": "动力煤", "code": "BK1493", "main_net": 3.93990224, "super_large_net": 4.12692304, "change_pct": 2.22, "main_ratio": 2.11}];
+var stateWatch = {signal:"all", sortKey:"score", sortDir:-1};
+var currentEvalSignals = [];
+var fundChart = null;
+var currentFund = null;
+var activeTab = "sector";
+
+// 自动刷新
+var AUTO_INTERVAL = 60;
+var autoOn = true;
+var autoTimer = null;
+var countdown = AUTO_INTERVAL;
+
+function updateCountdown(){ document.getElementById("countdownText").textContent = countdown + "s"; }
+function startAuto(){
+  if(autoTimer) clearInterval(autoTimer);
+  countdown = AUTO_INTERVAL; updateCountdown();
+  autoTimer = setInterval(function(){
+    countdown--; updateCountdown();
+    if(countdown <= 0){ countdown = AUTO_INTERVAL; if(autoOn) refreshData(true); }
+  }, 1000);
+}
+function toggleAuto(){
+  autoOn = !autoOn; var el = document.getElementById("autoToggle");
+  if(autoOn){ el.classList.add("on"); startAuto(); }
+  else { el.classList.remove("on"); clearInterval(autoTimer); autoTimer=null; }
+}
+
+// Tab切换
+document.querySelectorAll(".tab-btn").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    document.querySelectorAll(".tab-btn").forEach(function(b){b.classList.remove("active")});
+    document.querySelectorAll(".tab-panel").forEach(function(p){p.classList.remove("active")});
+    btn.classList.add("active");
+    activeTab = btn.dataset.tab;
+    document.getElementById("panel-" + activeTab).classList.add("active");
+    if(activeTab === "portfolio") loadPortfolio();
+    if(activeTab === "sector") renderSectorCards();
+    if(activeTab === "watch") renderWatchTable();
+    if(activeTab === "evaluate") { /* 无需预加载，按钮触发 */ }
+  });
+});
+
+// ---- 刷新 ----
+async function refreshData(silent){
+  var btn = document.getElementById("refreshBtn");
+  btn.classList.add("loading"); btn.disabled = true;
+  try{
+    var r = await fetch("/api/refresh", {method:"POST"});
+    var j = await r.json();
+    if(j.ok){
+      var newData = j.data;
+      RAW = newData.results;
+      SECTOR = newData.sector_flows;
+      sectorCache = {};
+      document.getElementById("updateTime").textContent = newData.update_time;
+      document.getElementById("monCount").textContent = newData.monitored_count;
+      document.getElementById("totalCount").textContent = newData.results.length;
+      if(activeTab==="sector") renderSectorCards();
+      if(activeTab==="portfolio") loadPortfolio();
+      if(activeTab==="watch") renderWatchTable();
+      updateBuySigBadge();
+      if(!silent) showToast("已更新 (" + j.update_time + ")");
+      if(autoOn){ countdown = AUTO_INTERVAL; updateCountdown(); }
+    } else { if(!silent) showToast("失败: " + j.error); }
+  } catch(e){ if(!silent) showToast("网络错误"); console.error(e); }
+  btn.classList.remove("loading"); btn.disabled = false;
+}
+
+// ---- Tab1: 行业板块 ----
+var sectorCache = {};
+function renderSectorCards(){
+  var grid = document.getElementById("sector-grid");
+  if(!SECTOR||!SECTOR.length){ grid.innerHTML='<div style="color:#8899aa">暂无板块数据</div>'; return; }
+  grid.innerHTML = SECTOR.map(function(s,idx){
+    var chg = s.change_pct || 0;
+    var chgCls = chg>0?"up":"down";
+    var chgSign = chg>0?"+":"";
+    var mn = s.main_net || 0;
+    var tag, tagCls;
+    if(chg > 2 && mn > 5){ tag="强烈关注"; tagCls="strong"; }
+    else if(chg > 0 && mn > 0){ tag="建议关注"; tagCls="attention"; }
+    else if(chg < -2 && mn < 0){ tag="暂时回避"; tagCls="avoid"; }
+    else { tag="观望"; tagCls="watch"; }
+    return '<div class="sector-card">'+
+      '<div class="sc-header" onclick="toggleSector('+idx+',\''+esc(s.name)+'\')">'+
+        '<div>'+
+          '<div class="sc-name">'+esc(s.name)+'</div>'+
+          '<div class="sc-stats">'+
+            '<span class="'+chgCls+'">涨幅 '+chgSign+chg.toFixed(2)+'%</span>'+
+            '<span class="'+((mn>0)?"up":"down")+'">主力 '+mn.toFixed(2)+'亿</span>'+
+          '</div>'+
+          '<span class="sc-tag '+tagCls+'">'+tag+'</span>'+
+        '</div>'+
+        '<span class="sc-arrow">&#9654;</span>'+
+      '</div>'+
+      '<div class="sc-body" id="sc-body-'+idx+'"><div class="sc-loading">点击展开查看基金列表</div></div>'+
+    '</div>';
+  }).join("");
+  renderSectorChart();
+}
+
+function toggleSector(idx, name){
+  var body = document.getElementById("sc-body-"+idx);
+  var header = body.previousElementSibling;
+  if(body.style.display === "block"){
+    body.style.display = "none";
+    header.classList.remove("expanded");
+    return;
+  }
+  header.classList.add("expanded");
+  if(sectorCache[name]){
+    body.innerHTML = sectorCache[name];
+    body.style.display = "block";
+    return;
+  }
+  body.style.display = "block";
+  body.innerHTML = '<div class="sc-loading">加载中...</div>';
+  fetch("/api/sector-funds?sector=" + encodeURIComponent(name))
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var funds = data.funds||[];
+      if(!funds.length){
+        body.innerHTML = '<div class="sc-loading">该板块暂无相关基金</div>';
+        return;
+      }
+      var html = '<table class="sc-table"><thead><tr>'+
+        '<th>代码</th><th>名称</th><th>净值</th><th>涨跌</th><th>类型</th></tr></thead><tbody>';
+      funds.forEach(function(f){
+        var chCls = f.change>0?"up":f.change<0?"down":"neutral";
+        var chSign = f.change>0?"+":"";
+        html += '<tr class="fund-row" data-code="'+f.code+'" data-name="'+esc(f.name)+'">'+
+          '<td>'+f.code+'</td>'+
+          '<td>'+esc(f.name)+'</td>'+
+          '<td>'+(f.nav||"-")+'</td>'+
+          '<td class="'+chCls+'">'+chSign+(f.change||0)+'%</td>'+
+          '<td style="font-size:10px;color:#8899aa">'+(f.category||f.ftype||"")+'</td>'+
+        '</tr>';
+      });
+      html += '</tbody></table>';
+      sectorCache[name] = html;
+      body.innerHTML = html;
+    }).catch(function(){
+      body.innerHTML = '<div class="sc-loading">加载失败</div>';
+    });
+}
+
+var scChart = null;
+function renderSectorChart(){
+  if(!SECTOR||!SECTOR.length) return;
+  var top = SECTOR.slice(0,15).reverse();
+  var dom = document.getElementById("sector-chart");
+  if(!scChart) scChart = echarts.init(dom);
+  scChart.setOption({
+    tooltip:{trigger:"axis",formatter:function(p){return p[0].name+"<br/>主力净流入: "+p[0].value+"亿<br/>涨幅: "+p[0].data.chg+"%"}},
+    grid:{left:78,right:40,top:8,bottom:16},
+    xAxis:{type:"value",axisLabel:{color:"#8899aa",fontSize:10,formatter:"{value}亿"}},
+    yAxis:{type:"category",data:top.map(function(s){return s.name}),axisLabel:{color:"#e0e0e0",fontSize:10}},
+    series:[{type:"bar",data:top.map(function(s){return{
+      value:Number(s.main_net.toFixed(2)),chg:s.change_pct,
+      itemStyle:{color:s.main_net>0?"#ff4444":"#22bb44"}
+    }}),barWidth:"60%",label:{show:true,position:"right",color:"#8899aa",fontSize:9,formatter:"{c}亿"}}]
+  });
+}
+
+// ---- Tab2: 持仓 ----
+var pfData = [];
+async function loadPortfolio(){
+  try{
+    var r = await fetch("/api/portfolio");
+    var j = await r.json();
+    pfData = j.positions||[];
+    renderPortfolio();
+  } catch(e){ console.error(e); }
+}
+function renderPortfolio(){
+  var body = document.getElementById("pf-body");
+  var empty = document.getElementById("pf-empty");
+  var summary = document.getElementById("pf-summary");
+  if(!pfData.length){
+    body.innerHTML = ""; empty.style.display = "block"; summary.innerHTML = "";
+    return;
+  }
+  empty.style.display = "none";
+  var totalAmount=0, totalMarket=0, totalDaily=0, totalProfit=0;
+  body.innerHTML = pfData.map(function(p){
+    var amt = p.amount||0; var nav = p.buy_nav||0; var cn = p.current_nav||0;
+    var shares = p.shares||0;
+    var marketVal = cn ? (shares*cn) : 0;
+    var dp = p.daily_profit||0; var tp = p.total_profit||0;
+    var rr = p.return_rate||0;
+    totalAmount += amt; totalMarket += marketVal; totalDaily += dp; totalProfit += tp;
+    var dpCls = dp>=0?"up":"down"; var dpSign = dp>=0?"+":"";
+    var tpCls = tp>=0?"up":"down"; var tpSign = tp>=0?"+":"";
+    var rrCls = rr>=0?"up":"down"; var rrSign = rr>=0?"+":"";
+    var sig = sigInfo(p.signal||"hold");
+    var advice = adviceText(p.signal||"");
+    var isNew = amt === 0;
+    var inputCls = isNew ? "pf-new-hint" : "";
+    return '<tr data-id="'+p.id+'">'+
+      '<td class="pf-code">'+esc(p.code)+'</td>'+
+      '<td>'+esc(p.name||"")+'</td>'+
+      '<td><input type="number" class="'+inputCls+'" value="'+amt+'" data-field="amount" onblur="savePf(this)" placeholder="输入金额"'+(isNew?' autofocus':'')+'></td>'+
+      '<td><input type="number" class="'+inputCls+'" value="'+nav+'" data-field="buy_nav" step="0.0001" onblur="savePf(this)" placeholder="买入净值"></td>'+
+      '<td><input type="date" class="pf-date" value="'+(p.buy_date||"")+'" data-field="buy_date" onchange="savePf(this)"></td>'+
+      '<td><input type="text" class="pf-time" value="'+(p.buy_time||"15:00")+'" data-field="buy_time" onblur="savePf(this)"></td>'+
+      '<td><input type="text" class="pf-readonly" value="'+(shares||0)+'" readonly></td>'+
+      '<td><input type="text" class="pf-readonly" value="'+(cn||"-")+'" readonly></td>'+
+      '<td class="'+dpCls+'">'+dpSign+dp.toFixed(2)+'</td>'+
+      '<td class="'+tpCls+'">'+tpSign+tp.toFixed(2)+'</td>'+
+      '<td class="'+rrCls+'">'+rrSign+rr.toFixed(2)+'%</td>'+
+      '<td><span class="signal-tag signal-'+(p.signal||'hold')+'">'+sig[0]+'</span></td>'+
+      '<td><span class="pf-advice signal-'+(p.signal||'hold')+'">'+advice+'</span></td>'+
+      '<td><button class="pf-remove-btn" onclick="removePf('+p.id+')" title="移除">x</button></td>'+
+    '</tr>';
+  }).join("");
+  var dpClsS = totalDaily>=0?"up":"down"; var tpClsS = totalProfit>=0?"up":"down";
+  body.innerHTML += '<tr style="background:#1a2a3a;font-weight:700;font-size:12px">'+
+    '<td colspan="2">汇总</td>'+
+    '<td>'+totalAmount.toFixed(2)+'</td><td>-</td><td colspan="2">-</td>'+
+    '<td>-</td><td>-</td>'+
+    '<td class="'+dpClsS+'">'+(totalDaily>=0?"+":"")+totalDaily.toFixed(2)+'</td>'+
+    '<td class="'+tpClsS+'">'+(totalProfit>=0?"+":"")+totalProfit.toFixed(2)+'</td>'+
+    '<td class="'+(totalProfit>=0?"up":"down")+'">'+(totalAmount>0?(totalProfit/totalAmount*100).toFixed(2):"0.00")+'%</td>'+
+    '<td colspan="3"></td></tr>';
+  summary.innerHTML =
+    '<div class="pf-sum-card"><div class="ps-label">总投入</div><div class="ps-value" style="color:#ffd700">'+totalAmount.toFixed(2)+'</div></div>'+
+    '<div class="pf-sum-card"><div class="ps-label">总市值</div><div class="ps-value">'+totalMarket.toFixed(2)+'</div></div>'+
+    '<div class="pf-sum-card"><div class="ps-label">当日收益</div><div class="ps-value '+dpClsS+'">'+(totalDaily>=0?"+":"")+totalDaily.toFixed(2)+'</div></div>'+
+    '<div class="pf-sum-card"><div class="ps-label">累计收益</div><div class="ps-value '+tpClsS+'">'+(totalProfit>=0?"+":"")+totalProfit.toFixed(2)+'</div></div>';
+}
+
+async function savePf(el){
+  var row = el.closest("tr");
+  var id = parseInt(row.dataset.id);
+  var field = el.dataset.field;
+  var val = el.value;
+  if(field === "amount" || field === "buy_nav") val = parseFloat(val)||0;
+  try{
+    var body = {id:id};
+    body[field] = val;
+    var r = await fetch("/api/portfolio/update",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(body)
+    });
+    var j = await r.json();
+    if(j.ok){ loadPortfolio(); }
+  } catch(e){ console.error(e); }
+}
+
+async function removePf(id){
+  if(!confirm("确认移除此持仓？")) return;
+  try{
+    var r = await fetch("/api/portfolio/remove",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({id:id})
+    });
+    var j = await r.json();
+    if(j.ok){ loadPortfolio(); showToast("已移除"); }
+  } catch(e){ console.error(e); }
+}
+
+function adviceText(signal){
+  var m = {"strong_buy":"强烈建议加仓","buy":"可适当加仓","hold":"继续持有","sell":"可考虑减仓","strong_sell":"建议清仓"};
+  return m[signal]||"继续持有";
+}
+
+// ---- Tab3: 仅监控 ----
+function renderWatchTable(){
+  var rows = RAW.filter(function(r){ return r.monitored; });
+  if(stateWatch.signal !== "all"){
+    var sigs = stateWatch.signal.split(",");
+    rows = rows.filter(function(r){ return sigs.indexOf(r.signal)>=0; });
+  }
+  var q = document.getElementById("watchFilter").value.toLowerCase();
+  if(q) rows = rows.filter(function(r){ return (r.name||"").toLowerCase().indexOf(q)>=0||(r.code||"").indexOf(q)>=0; });
+  var sk = stateWatch.sortKey, sd = stateWatch.sortDir;
+  rows.sort(function(a,b){
+    var va = (sk==="name"||sk==="category"||sk==="code")?String(a[sk]||""):Number(a[sk]||0);
+    var vb = (sk==="name"||sk==="category"||sk==="code")?String(b[sk]||""):Number(b[sk]||0);
+    if(typeof va==="string") return sd*va.localeCompare(vb,"zh");
+    if(isNaN(va)) va=0; if(isNaN(vb)) vb=0;
+    return sd*(va-vb);
+  });
+  document.getElementById("watch-body").innerHTML = rows.map(function(r){
+    var ch = r.change>0?"up":r.change<0?"down":"neutral";
+    var chSign = r.change>0?"+":"";
+    var sig = sigInfo(r.signal);
+    var sc = r.score||50;
+    var bc = sc>=70?"#ff6347":sc>=50?"#ffa500":"#2e8b57";
+    var mom = r.momentum;
+    return '<tr class="fund-row" data-code="'+r.code+'" data-name="'+esc(r.name)+'">'+
+      '<td>'+r.code+'</td><td>'+esc(r.name)+'</td>'+
+      '<td style="font-size:11px;color:#8899aa">'+r.category+'</td>'+
+      '<td>'+(r.nav||"-")+'</td>'+
+      '<td class="'+ch+'">'+chSign+(r.change||"0")+'%</td>'+
+      '<td>'+(r.rsi!=null?r.rsi:"-")+'</td>'+
+      '<td class="'+(mom>0?"up":"down")+'">'+(mom!=null?mom+"%":"-")+'</td>'+
+      '<td><span style="color:'+bc+'">'+sc+'</span>'+
+        '<div class="score-bar"><div class="score-fill" style="width:'+sc+'%;background:'+bc+'"></div></div></td>'+
+      '<td><span class="signal-tag signal-'+r.signal+'">'+sig[0]+'</span>'+
+        ' <button class="pf-remove-btn" data-code="'+r.code+'" onclick="event.stopPropagation();removeWatch(\''+r.code+'\',\''+(r.name||"").replace(/'/g,"\\'")+'\')">x</button></td>'+
+    '</tr>';
+  }).join("");
+}
+
+function setWatchSignal(s, btn){
+  stateWatch.signal = s;
+  document.querySelectorAll("#panel-watch .ctrl-btn[data-signal]").forEach(function(b){b.classList.remove("active")});
+  btn.classList.add("active");
+  renderWatchTable();
+}
+function setWatchSort(key, dir){
+  if(!dir) dir = stateWatch.sortKey===key ? -stateWatch.sortDir : 1;
+  stateWatch.sortKey = key; stateWatch.sortDir = dir;
+  renderWatchTable();
+}
+
+async function removeWatch(code, name){
+  if(!confirm("确认将 "+(name||code)+" 从监控中移除？")) return;
+  var r = await fetch("/api/remove-watch",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({code:code})
+  });
+  var j = await r.json();
+  if(j.ok){ RAW = RAW.filter(function(rr){return rr.code!==code;}); renderWatchTable(); showToast("已移除: "+(name||code)); }
+}
+
+// ---- 行点击弹窗 ----
+document.getElementById("watch-body").addEventListener("click",function(e){
+  var row = e.target.closest("tr.fund-row");
+  if(!row) return;
+  currentFund = {code:row.dataset.code, name:row.dataset.name};
+  openModal();
+});
+
+document.getElementById("sector-grid").addEventListener("click",function(e){
+  var row = e.target.closest("tr.fund-row");
+  if(!row) return;
+  currentFund = {code:row.dataset.code, name:row.dataset.name};
+  openModal();
+});
+
+document.getElementById("pf-body").addEventListener("click",function(e){
+  if(e.target.tagName==="INPUT"||e.target.tagName==="BUTTON") return;
+  var row = e.target.closest("tr[data-id]");
+  if(!row) return;
+  var codeEl = row.querySelector(".pf-code");
+  var nameEl = row.querySelectorAll("td")[1];
+  var code = codeEl ? codeEl.textContent.trim() : "";
+  var name = nameEl ? nameEl.textContent.trim() : "";
+  if(!code) return;
+  currentFund = {code:code, name:name};
+  openModal();
+});
+
+
+function openModal(){
+  document.getElementById("modalOverlay").classList.add("show");
+  document.getElementById("modalTitle").textContent = currentFund.name + " (" + currentFund.code + ")";
+  var r = null;
+  for(var i=0;i<RAW.length;i++){ if(RAW[i].code===currentFund.code){ r=RAW[i]; break; } }
+  var info = "";
+  if(r){
+    var chCls = r.change>0?"up":r.change<0?"down":"neutral";
+    var chSign = r.change>0?"+":"";
+    info += '<div class="item">最新净值 <span>'+r.nav+'</span></div>';
+    info += '<div class="item '+chCls+'">涨跌幅 <span class="'+chCls+'">'+chSign+r.change+'%</span></div>';
+    var si = sigInfo(r.signal);
+    info += '<div class="item">信号 <span style="color:'+si[1]+'">'+si[0]+'</span></div>';
+    info += '<div class="item">评分 <span>'+r.score+'</span></div>';
+  }
+  document.getElementById("modalInfo").innerHTML = info;
+  document.querySelectorAll(".range-tab").forEach(function(t){t.classList.remove("active")});
+  document.querySelector(".range-tab[data-range='3m']").classList.add("active");
+  loadChart("3m");
+}
+function closeModal(){
+  document.getElementById("modalOverlay").classList.remove("show");
+  if(fundChart){ fundChart.dispose(); fundChart = null; }
+  currentFund = {};
+}
+document.getElementById("rangeTabs").addEventListener("click", function(e){
+  if(!e.target.classList.contains("range-tab")) return;
+  document.querySelectorAll(".range-tab").forEach(function(t){t.classList.remove("active")});
+  e.target.classList.add("active");
+  loadChart(e.target.dataset.range);
+});
+function buildChartOption(data){
+  var dates = data.records.map(function(d){return d.date});
+  var navs = data.records.map(function(d){return d.nav});
+  var changes = data.records.map(function(d){var v=parseFloat(d.change); return isNaN(v)?0:v;});
+  return {
+    tooltip:{trigger:"axis",formatter:function(ps){return ps[0].axisValue+"<br/>净值: <b>"+ps[0].value+"</b><br/>日涨幅: "+(ps[1]?ps[1].value+"%":"-");}},
+    legend:{data:["单位净值","日涨幅"],bottom:0,textStyle:{color:"#8899aa",fontSize:11}},
+    grid:{left:60,right:60,top:16,bottom:36},
+    xAxis:{type:"category",data:dates,axisLabel:{color:"#8899aa",fontSize:10,rotate:dates.length>60?45:0},axisLine:{lineStyle:{color:"#2a3a4a"}}},
+    yAxis:[
+      {type:"value",name:"净值",nameTextStyle:{color:"#8899aa"},axisLabel:{color:"#8899aa",fontSize:10},splitLine:{lineStyle:{color:"#1a2a3a"}}},
+      {type:"value",name:"涨跌%",nameTextStyle:{color:"#8899aa"},axisLabel:{color:"#8899aa",fontSize:10,formatter:"{value}%"},splitLine:{show:false}}
+    ],
+    series:[
+      {name:"单位净值",type:"line",data:navs,smooth:true,lineStyle:{color:"#ffd700",width:2},itemStyle:{color:"#ffd700"},symbol:"none",
+       markArea:{silent:true,data:[[{yAxis:Math.min.apply(null,navs),itemStyle:{color:"rgba(255,215,0,.08)"}},{yAxis:Math.max.apply(null,navs)}]]}},
+      {name:"日涨幅",type:"bar",yAxisIndex:1,data:changes.map(function(v){return{value:v,itemStyle:{color:v>=0?"#ff4444":"#22bb44"}}}),barWidth:"60%"}
+    ]
+  };
+}
+
+function loadChart(range){
+  document.getElementById("chartLoading").style.display = "flex";
+  document.getElementById("chartError").style.display = "none";
+  var chartDom = document.getElementById("fund-chart");
+  chartDom.style.display = "none";
+  fetch("/api/fund/" + currentFund.code + "?range=" + range)
+    .then(function(r){return r.json()})
+    .then(function(data){
+      document.getElementById("chartLoading").style.display = "none";
+      chartDom.style.display = "";
+      if(!data.records||data.records.length===0){
+        document.getElementById("chartError").style.display = "flex"; return;
+      }
+      if(fundChart && fundChart._currentCode === currentFund.code && fundChart._currentRange === range){
+        fundChart.setOption(buildChartOption(data), true);
+        return;
+      }
+      if(!fundChart){
+        fundChart = echarts.init(chartDom);
+      }
+      fundChart._currentCode = currentFund.code;
+      fundChart._currentRange = range;
+      fundChart.setOption(buildChartOption(data), true);
+    }).catch(function(){
+      document.getElementById("chartLoading").style.display = "none";
+      document.getElementById("chartError").style.display = "flex";
+    });
+}
+
+// ---- 搜索 ----
+var searchDebounce = null;
+var searchAbort = null;
+
+function handleSearchInput(){
+  var q = document.getElementById("search").value.trim();
+  var dd = document.getElementById("search-dropdown");
+  var typeFilter = document.getElementById("search-filter-type").value;
+  if(searchDebounce) clearTimeout(searchDebounce);
+  if(q.length < 1){ dd.classList.remove("show"); return; }
+  dd.classList.add("show");
+  dd.innerHTML = '<div class="sd-loading">搜索中...</div>';
+  searchDebounce = setTimeout(function(){
+    if(searchAbort) searchAbort.abort();
+    var ctrl = new AbortController();
+    searchAbort = ctrl;
+    var url = "/api/search?q=" + encodeURIComponent(q);
+    if(typeFilter) url += "&ftype=" + encodeURIComponent(typeFilter);
+    fetch(url, {signal:ctrl.signal})
+      .then(function(r){return r.json()})
+      .then(function(data){
+        var items = data.datas||[];
+        if(!items.length){ dd.innerHTML='<div class="sd-empty">无匹配结果</div>'; return; }
+        dd.innerHTML = items.map(function(d){
+          return '<div class="sd-item">'+
+            '<div class="sd-info"><span class="sd-code">'+esc(d.code)+'</span><span class="sd-name">'+esc(d.name)+'</span>'+
+            '<div class="sd-meta">'+(d.ftype||"")+(d.company?" | "+d.company:"")+'</div></div>'+
+            '<div class="sd-actions">'+
+              '<button class="sd-btn sd-btn-position" data-code="'+esc(d.code)+'" data-name="'+esc(d.name)+'" data-ftype="'+esc(d.ftype||"")+'" data-company="'+esc(d.company||"")+'" data-action="position">加持仓</button>'+
+              '<button class="sd-btn sd-btn-watch" data-code="'+esc(d.code)+'" data-name="'+esc(d.name)+'" data-ftype="'+esc(d.ftype||"")+'" data-company="'+esc(d.company||"")+'" data-action="watch">加监控</button>'+
+            '</div></div>';
+        }).join("");
+      }).catch(function(e){
+        if(e.name !== "AbortError"){ dd.innerHTML='<div class="sd-empty">搜索失败</div>'; }
+      });
+  }, 200);
+}
+
+document.getElementById("search-dropdown").addEventListener("click", function(e){
+  var btn = e.target.closest(".sd-btn");
+  if(!btn) return;
+  var code = btn.dataset.code;
+  var name = btn.dataset.name;
+  var ftype = btn.dataset.ftype;
+  var company = btn.dataset.company;
+  var action = btn.dataset.action;
+  var category = action === "position" ? "position" : "watch";
+
+  fetch("/api/add-watch", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({code:code, name:name, ftype:ftype, company:company, category:category})
+  }).then(function(r){return r.json()}).then(function(j){
+    if(j.ok){
+      document.getElementById("search-dropdown").classList.remove("show");
+      document.getElementById("search").value = "";
+      if(category === "position"){
+        showToast("已添加持仓: "+name);
+        document.querySelectorAll(".tab-btn").forEach(function(b){b.classList.remove("active")});
+        document.querySelector(".tab-btn[data-tab='portfolio']").classList.add("active");
+        document.querySelectorAll(".tab-panel").forEach(function(p){p.classList.remove("active")});
+        document.getElementById("panel-portfolio").classList.add("active");
+        activeTab = "portfolio";
+        loadPortfolio();
+      } else {
+        showToast("已添加监控: "+name);
+        RAW.push({
+          code:code, name:name, category:"搜索添加", nav:"加载中...",
+          change:0, signal:"", score:0, rsi:null, momentum:null, drawdown:null,
+          monitored:true, searched:true, ftype:ftype
+        });
+        if(activeTab==="watch") renderWatchTable();
+      }
+      updateBuySigBadge();
+    }
+  });
+});
+
+document.addEventListener("click", function(e){
+  var wrap = document.querySelector(".search-wrap");
+  if(wrap && !wrap.contains(e.target)){
+    document.getElementById("search-dropdown").classList.remove("show");
+  }
+});
+
+// ---- 买入信号面板 ----
+function openBuyPanel(){
+  document.getElementById("sideOverlay").classList.add("show");
+  document.getElementById("sidePanel").classList.add("show");
+  document.getElementById("sigList").innerHTML = '<div style="text-align:center;padding:20px;color:#8899aa">加载中...</div>';
+  fetch("/api/buy-signals")
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var signals = data.signals||[];
+      document.getElementById("sigStat").textContent = "共 "+signals.length+" 条";
+      if(!signals.length){
+        document.getElementById("sigList").innerHTML='<div class="side-panel-empty">暂无买入信号</div>'; return;
+      }
+      document.getElementById("sigList").innerHTML = signals.map(function(r,i){
+        var sl = sigInfo(r.signal);
+        return '<div class="sig-item" id="sigItem'+i+'" data-code="'+esc(r.code)+'" data-name="'+esc(r.name)+'">'+
+          '<div class="sig-item-header" data-idx="'+i+'">'+
+            '<div style="flex:1">'+
+              '<span style="color:#ffd700;font-family:monospace;font-size:12px">'+esc(r.code)+'</span>'+
+              '<span style="color:#e0e0e0;font-size:13px;font-weight:600;margin-left:6px">'+esc(r.name)+'</span>'+
+              '<div style="font-size:11px;color:#8899aa;margin-top:3px">'+
+                '评分: <span style="color:'+(r.score>=70?'#ff6347':'#ffa500')+'">'+(r.score||50)+'</span>'+
+              '</div>'+
+            '</div>'+
+            '<span class="signal-tag signal-'+r.signal+'">'+sl[0]+'</span>'+
+          '</div>'+
+        '</div>';
+      }).join("");
+    }).catch(function(){
+      document.getElementById("sigList").innerHTML='<div class="side-panel-empty">加载失败</div>';
+    });
+}
+function closeBuyPanel(){
+  document.getElementById("sideOverlay").classList.remove("show");
+  document.getElementById("sidePanel").classList.remove("show");
+}
+
+// ---- 工具函数 ----
+function esc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+function sigInfo(s){
+  var m = {strong_buy:["强烈买入","#dc143c"],buy:["建议买入","#ff6347"],hold:["持有观望","#ffa500"],sell:["建议卖出","#2e8b57"],strong_sell:["强烈卖出","#228b22"]};
+  return m[s]||["未知","#888"];
+}
+function showToast(msg){
+  var t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(function(){t.classList.remove("show")}, 2200);
+}
+function updateBuySigBadge(){
+  var buyCount = RAW.filter(function(r){return r.monitored&&(r.signal==="strong_buy"||r.signal==="buy")}).length;
+  var btn = document.getElementById("buySigBtn");
+  if(buyCount>0){ btn.textContent="买入信号 ("+buyCount+")"; btn.classList.add("has-sig"); }
+  else { btn.textContent="买入信号"; btn.classList.remove("has-sig"); }
+}
+
+// ---- 建议买入评估 ----
+var evalPollTimer = null;
+var evalPollInterval = 800;
+
+async function startEvaluate(mode){
+  document.getElementById("eval-entry").style.display = "none";
+  document.getElementById("eval-progress").style.display = "block";
+  document.getElementById("eval-results").style.display = "none";
+  evalPollInterval = 800;
+
+  try{
+    var r = await fetch("/api/evaluate-all", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({mode: mode})
+    });
+    var j = await r.json();
+    if(!j.ok){ showToast("启动失败: "+j.error); document.getElementById("eval-entry").style.display="block"; document.getElementById("eval-progress").style.display="none"; return; }
+    document.getElementById("eval-total").textContent = j.total;
+    document.getElementById("eval-mode-label").textContent = j.label || "";
+    evalPollTimer = setInterval(pollEvalProgress, evalPollInterval);
+  } catch(e){ showToast("网络错误"); }
+}
+
+async function pollEvalProgress(){
+  try{
+    var r = await fetch("/api/evaluate-progress");
+    var j = await r.json();
+    if(j.error){
+      clearInterval(evalPollTimer);
+      showToast("评估出错: "+j.error);
+      document.getElementById("eval-entry").style.display = "block";
+      document.getElementById("eval-progress").style.display = "none";
+      return;
+    }
+    document.getElementById("eval-done").textContent = j.done;
+    document.getElementById("eval-total").textContent = j.total;
+    var pct = j.total>0 ? Math.round(j.done/j.total*100) : 0;
+    document.getElementById("eval-bar").style.width = pct+"%";
+    var now = Date.now()/1000;
+    if(j.start_time && j.done>0){
+      var elapsed = now - j.start_time;
+      var rate = j.done / elapsed;
+      var remaining = j.total - j.done;
+      var eta = rate>0 ? remaining / rate : 0;
+      document.getElementById("eval-remaining").textContent = eta>0 ? eta.toFixed(0) : "--";
+
+      // 动态退避
+      var newInterval;
+      if(eta < 30){ newInterval = 800; }
+      else if(eta < 120){ newInterval = 1500; }
+      else { newInterval = 3000; }
+      if(newInterval !== evalPollInterval){
+        evalPollInterval = newInterval;
+        clearInterval(evalPollTimer);
+        evalPollTimer = setInterval(pollEvalProgress, evalPollInterval);
+      }
+    }
+    if(!j.running){
+      clearInterval(evalPollTimer);
+      evalPollTimer = null;
+      evalPollInterval = 800;
+      document.getElementById("eval-progress").style.display = "none";
+      loadEvalResults();
+    }
+  } catch(e){ clearInterval(evalPollTimer); evalPollTimer=null; }
+}
+
+async function loadEvalResults(){
+  try{
+    var r = await fetch("/api/evaluate-results");
+    var j = await r.json();
+    if(!j.ok){ showToast(j.error); return; }
+    document.getElementById("eval-results").style.display = "block";
+    document.getElementById("eval-total-result").textContent = j.total;
+    document.getElementById("eval-buy-count").textContent = j.buy_count;
+    renderEvalResults(j.signals);
+  } catch(e){ showToast("获取结果失败"); }
+}
+
+function renderEvalResults(signals){
+  currentEvalSignals = signals;
+  var listEl = document.getElementById("eval-signals-list");
+  var filterEl = document.getElementById("eval-filters");
+  var resetEl = document.getElementById("eval-reset-area");
+
+  if(!signals || !signals.length){
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#8899aa">暂未发现买入信号</div>';
+    filterEl.innerHTML = '';
+    resetEl.style.display = 'none';
+    return;
+  }
+
+  // 提取所有分类
+  var categories = [];
+  var seen = {};
+  signals.forEach(function(s){
+    var cat = s.category || "未分类";
+    if(!seen[cat]){ seen[cat]=true; categories.push(cat); }
+  });
+
+  // 分类筛选按钮
+  var filterHtml = '<button onclick="filterEvalResults(\'all\')" class="eval-filter-btn eval-filter-active" data-cat="all">全部('+signals.length+')</button>';
+  categories.forEach(function(cat){
+    var count = signals.filter(function(s){return (s.category||"未分类")===cat;}).length;
+    filterHtml += '<button onclick="filterEvalResults(\''+cat.replace(/'/g,"\\'")+'\')" class="eval-filter-btn" data-cat="'+esc(cat)+'">'+esc(cat)+'('+count+')</button>';
+  });
+  filterEl.innerHTML = filterHtml;
+
+  // 渲染全部基金
+  renderEvalSignalItems(signals);
+  resetEl.style.display = 'block';
+}
+
+function filterEvalResults(cat){
+  document.querySelectorAll(".eval-filter-btn").forEach(function(b){b.classList.remove("eval-filter-active")});
+  var btn = document.querySelector('.eval-filter-btn[data-cat="'+cat.replace(/"/g,'&quot;')+'"]');
+  if(btn) btn.classList.add("eval-filter-active");
+  var filtered = cat==="all" ? currentEvalSignals : currentEvalSignals.filter(function(s){return (s.category||"未分类")===cat;});
+  renderEvalSignalItems(filtered);
+}
+
+function renderEvalSignalItems(items){
+  var listEl = document.getElementById("eval-signals-list");
+  if(!items || !items.length){
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:#8899aa">该分类暂无买入信号</div>';
+    return;
+  }
+  listEl.innerHTML = items.map(function(s){
+    var chgCls = (s.change||0)>0?"up":"down";
+    var chgSign = (s.change||0)>0?"+":"";
+    var sl = sigInfo(s.signal);
+    var sc = s.score||50;
+    var bc = sc>=70?"#ff6347":sc>=50?"#ffa500":"#2e8b57";
+
+    var reasons = [];
+    if(s.rsi!=null){
+      var rsiLabel = s.rsi<30?"RSI超卖(<30)，反弹概率高":s.rsi<40?"RSI偏低("+s.rsi+")，接近超卖区":"RSI中性";
+      reasons.push({label:"RSI", value:s.rsi, desc:rsiLabel});
+    }
+    if(s.momentum_5d!=null){
+      var momDesc = s.momentum_5d>0?"5日动量正值，短期趋势向好":"5日动量:"+s.momentum_5d;
+      reasons.push({label:"5日动量", value:s.momentum_5d+"%", desc:momDesc});
+    }
+    if(s.drawdown!=null){
+      reasons.push({label:"回撤", value:s.drawdown+"%", desc:"近期回撤幅度较大，存在反弹空间"});
+    }
+    if(s.ma_status){
+      reasons.push({label:"均线", value:s.ma_status, desc:"均线形态有利"});
+    }
+    var estGain = sc>=80 ? "8%~15%" : sc>=70 ? "5%~10%" : sc>=60 ? "3%~7%" : "2%~5%";
+
+    var reasonsHtml = reasons.map(function(rr){
+      return '<div class="eval-reason"><span class="er-label">'+rr.label+':</span><span class="er-value">'+rr.value+'</span> &mdash; '+rr.desc+'</div>';
+    }).join("");
+
+    return '<div class="eval-card eval-fund-row">'+
+      '<div class="eval-card-header" onclick="this.parentElement.classList.toggle(\'expanded\')">'+
+        '<span class="ec-code">'+esc(s.code)+'</span>'+
+        '<span class="ec-name">'+esc(s.name)+' <span class="signal-tag signal-'+(s.signal||'hold')+'" style="font-size:10px;margin-left:6px">'+sl[0]+'</span><span class="eval-monitor-badge">已监控</span></span>'+
+        '<span class="ec-score" style="color:'+bc+'">'+sc+'</span>'+
+        '<span class="ec-change '+chgCls+'">'+chgSign+(s.change||0)+'%</span>'+
+        '<span class="ec-arrow">&#9660;</span>'+
+      '</div>'+
+      '<div class="eval-card-body">'+
+        '<div style="margin-bottom:8px;font-size:13px;color:#ffd700">预估涨幅: '+estGain+' | 分类: '+(s.category||"--")+'</div>'+
+        '<div style="margin-bottom:6px;font-size:12px;color:#8899aa">买入依据:</div>'+
+        reasonsHtml+
+        '<div style="margin-top:8px;font-size:11px;color:#556677">净值: '+(s.nav||"--")+' | 所属板块: '+(s.category||"--")+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join("");
+}
+
+function resetEvaluate(){
+  document.getElementById("eval-entry").style.display = "block";
+  document.getElementById("eval-progress").style.display = "none";
+  document.getElementById("eval-results").style.display = "none";
+  document.getElementById("eval-reset-area").style.display = "none";
+  currentEvalSignals = [];
+}
+
+async function batchAddToWatch(){
+  var btn = document.getElementById("eval-batch-add-btn");
+  btn.disabled = true;
+  btn.textContent = "添加中...";
+  try{
+    var r = await fetch("/api/batch-add-watch", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({codes: currentEvalSignals})
+    });
+    var j = await r.json();
+    if(j.ok){
+      showToast("已添加 "+j.added+" 只基金到监控");
+      btn.textContent = "已添加 "+j.added+" 只";
+      btn.style.background = "#2a6e3f";
+      // 标记已监控
+      document.querySelectorAll("#eval-signals-list .eval-fund-row .eval-monitor-badge").forEach(function(b){
+        b.style.display = "inline-block";
+      });
+      refreshData(true);
+    } else {
+      showToast("添加失败: "+j.error);
+      btn.disabled = false;
+      btn.textContent = "一键加入监控";
+    }
+  } catch(e){
+    showToast("网络错误");
+    btn.disabled = false;
+    btn.textContent = "一键加入监控";
+  }
+}
+
+// ---- 初始化 ----
+window.addEventListener("DOMContentLoaded", function(){
+  renderSectorCards();
+  updateBuySigBadge();
+  startAuto();
+  // 预加载持仓数据
+  loadPortfolio();
+});
+window.addEventListener("resize", function(){
+  if(scChart) scChart.resize();
+});
+</script>
+</body></html>
