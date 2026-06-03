@@ -5,7 +5,7 @@ package.domain = com.fundmonitor
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,db,html,css,js,md,bat,txt
 version = 1.0
-requirements = python3==3.11,kivy==2.3.0,requests,urllib3,certifi,charset-normalizer,idna,android,pillow
+requirements = 'python3==3.11,kivy==2.3.0,requests,urllib3,certifi,charset-normalizer,idna,android,pillow'
 orientation = portrait
 fullscreen = 1
 
