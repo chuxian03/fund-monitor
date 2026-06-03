@@ -3,26 +3,35 @@ title = 基金监控
 package.name = fundmonitor
 package.domain = com.fundmonitor
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,json,db,html,css,js
+source.include_exts = py,png,jpg,kv,atlas,db,html,css,js,md,bat,txt
 version = 1.0
-requirements = python3,kivy,requests,urllib3,certifi,charset-normalizer,idna,android,pillow
+requirements = python3==3.11,kivy==2.3.0,requests,urllib3,certifi,charset-normalizer,idna,android,pillow
 orientation = portrait
-osx.python_version = 3
-osx.kivy_version = 2.3.0
 fullscreen = 1
-android.permissions = INTERNET
+
+android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE
 android.api = 34
 android.minapi = 26
 android.ndk = 25b
 android.sdk = 34
-android.gradle_dependencies = 
+android.ndk_path = 
+android.sdk_path = 
 android.arch = arm64-v8a
 android.allow_backup = True
 android.presplash_color = #0f1923
 android.splash_color = #0f1923
+android.logcat_filters = *:S python:D
+android.add_src = 
+android.gradle_dependencies = 
 
-# 复制项目文件到 APK
-source.include_patterns = main.py,config.py,data_fetcher.py,analyzer.py,dashboard.py,db.py,funds.db,catalog_fetcher.py
+p4a.branch = develop
+p4a.source_dir = 
+
+ios.kivy_ios_url = https://github.com/kivy/kivy-ios
+ios.kivy_ios_branch = master
+ios.ios_deploy_url = https://github.com/phonegap/ios-deploy
+ios.ios_deploy_branch = 1.12.2
+ios.codesign.allowed = false
 
 [buildozer]
 log_level = 2

@@ -24,6 +24,13 @@ from analyzer import compute_signal
 from dashboard import build_dashboard
 import db
 
+# Android 兼容性处理
+try:
+    import android
+    IS_ANDROID = True
+except ImportError:
+    IS_ANDROID = False
+
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ==== P0: 断点续传 ====
