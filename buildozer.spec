@@ -22,7 +22,7 @@ android.logcat_filters = *:S python:D
 android.add_src = 
 android.gradle_dependencies = 
 
-p4a.branch = develop
+p4a.branch = master
 p4a.source_dir = 
 
 ios.kivy_ios_url = https://github.com/kivy/kivy-ios
