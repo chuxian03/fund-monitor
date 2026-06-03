@@ -32,5 +32,5 @@ ios.ios_deploy_branch = 1.12.2
 ios.codesign.allowed = false
 
 [buildozer]
-log_level = 2
+log_level = 3
 warn_on_root = 1
