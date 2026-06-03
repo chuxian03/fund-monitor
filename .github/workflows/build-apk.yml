@@ -26,7 +26,8 @@ jobs:
             cmake libffi-dev libssl-dev \
             openjdk-17-jdk-headless \
             unzip zip wget curl \
-            libltdl-dev
+            libltdl-dev \
+            liblzma-dev libjpeg-dev libpng-dev libfreetype-dev
 
       - name: Install Cython
         run: |
