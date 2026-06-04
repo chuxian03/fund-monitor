@@ -5,7 +5,7 @@ package.domain = com.fundmonitor
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,db,html,css,js,md,bat,txt
 version = 1.0
-requirements = python3\,kivy\,requests\,urllib3\,certifi\,charset_normalizer\,idna\,android\,pillow
+requirements = "python3,kivy,requests,urllib3,certifi,charset_normalizer,idna,android,pillow"
 orientation = portrait
 fullscreen = 1
 
@@ -33,5 +33,5 @@ ios.ios_deploy_branch = 1.12.2
 ios.codesign.allowed = false
 
 [buildozer]
-log_level = 3
+log_level = 2
 warn_on_root = 1
